@@ -1,0 +1,12 @@
+This program will patiently wait until you've stopped moving before executing another program.
+
+Its command line options include:
+	-h		Prints out how to use the program
+	-t timeout	Tell the program how long to wait before considering you idle (in seconds)
+
+The code is pretty readable. I used OpenBSD's sudo(8)'s idea for checking for a valid file. I'm sure
+there are thousands of programs like these but I wanted something small to act like a screen saver launcher.
+I also wanted to write it in Haskell but such is life.
+
+You can have this program run a script that will set your irssi status, then lock the screen, then unset your
+status if you want. Or do anything that relies on idle times, which makes sense.
