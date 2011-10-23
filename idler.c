@@ -52,6 +52,20 @@ xmalloc(size_t s)
 	return p;
 }
 
+void
+get_absolute(char *relative, char *loc)
+{
+	unsigned len;
+	char wd[PATH_MAX];
+
+	if (!getcwd(wd, PATH_MAX))
+		err(1, NULL);
+
+	len = snprintf(loc, PATH_MAX, "%s/%s", wd, relative);
+	if (len <= 0 || len >= PATH_MAX)
+		errx(1, "%s: file name too long", loc);
+}
+
 /* XXX Doesn't check if it's executable. */
 int
 proper_file(const char *file)
@@ -67,13 +81,20 @@ proper_file(const char *file)
 /* Taken from OpenBSD's sudo(8). */
 /* Thanks Todd C. Miller! */
 int
-valid_command(const char *file)
+valid_command(const char *file, int *relative)
 {
 	char *p, *save, *path, command[PATH_MAX];
 	int len, ret;
 
-	if (strchr(file, '/'))
+	/* We assume it's an absolute location. */
+	*relative = 0;
+
+	/* Does this require searching through PATH? */
+	if (strchr(file, '/')) {
+		if (*file != '/')
+			*relative = 1;
 		return proper_file(file);
+	}
 
 	if ((p = getenv("PATH")) == NULL)
 		return 0;
@@ -89,7 +110,7 @@ valid_command(const char *file)
 			*p = '\0';
 
 		len = snprintf(command, PATH_MAX, "%s/%s", path, file);
-		if (len <= 0 || len >= sizeof(command))
+		if (len <= 0 || len >= (int)sizeof(command))
 			errx(1, "%s: file name too long", file);
 
 		if (proper_file(command)) {
@@ -124,14 +145,16 @@ main(int argc, char **argv)
 	Display *d;
 	Window w;
 
-	Time timeout, saved_timeout;
-	char c;
+	unsigned long timeout, saved_timeout;
+	char c, file[PATH_MAX];
+	int relative;
 
 	info = XScreenSaverAllocInfo();
 	d = XOpenDisplay(NULL);
 	w = DefaultRootWindow(d);
 
 	errno = 0;
+	relative = 0;
 	/* Default timeout of 10 minutes. */
 	timeout = 600000;
 
@@ -139,7 +162,7 @@ main(int argc, char **argv)
 		switch(c) {
 		case 't':
 			timeout = (int)strtol(optarg, NULL, 10);
-			if (errno || timeout < 0 || timeout > LIM)
+			if (errno || timeout > LIM)
 				errx(1, "%s: invalid timeout", optarg);
 			/* Convert timeout into milliseconds. */
 			timeout *= 1000;
@@ -155,8 +178,14 @@ main(int argc, char **argv)
 	if (argc == 0)
 		errx(1, "must specify a command");
 
-	if (!valid_command(argv[0]))
+	if (!valid_command(argv[0], &relative))
 		errx(1, "%s: command not found", argv[0]);
+
+	/* Convert our relative path to an absolute one. */
+	if (relative)
+		get_absolute(argv[0], file);
+	else
+		snprintf(file, PATH_MAX, "%s", argv[0]);
 
 	daemon(0, 0);
 
@@ -166,7 +195,7 @@ main(int argc, char **argv)
 
 		if (info->idle > timeout && saved_timeout == 0) {
 			saved_timeout = info->idle;
-			launch(argv[0], argv);
+			launch(file, argv);
 		} else
 			/* Sleep for .1 second. Maybe use sleep(3) instead? */
 			usleep(100000);
